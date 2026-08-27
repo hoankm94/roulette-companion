@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Roulette Optimizer Live Companion",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Follow a verified roulette policy on CSGOEmpire. Reads website state and connects to the local optimizer — never places wagers.",
   "permissions": ["storage"],
   "host_permissions": [

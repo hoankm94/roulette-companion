@@ -3,6 +3,7 @@ import { applyCompanionApiResponse } from "../client/companion-map.js";
 import { ApiError, BackendClient } from "../client/backend-client.js";
 import type { CompanionStateResponse } from "../client/backend-client.js";
 import { MSG, type CalculateTargetPayload, type CompanionMessage, type StartSessionPayload } from "../shared/messages.js";
+import { centsToDollarAmount } from "../shared/money.js";
 import type { CompanionUiState, HealthState } from "../shared/types.js";
 import { DEFAULT_BACKEND_URL, emptyUiState } from "../shared/types.js";
 import { deriveHealthFromAdapter, reduceUiState } from "../state/ui-state.js";
@@ -177,10 +178,6 @@ export class CompanionController {
       return;
     }
     fanOut();
-  }
-
-  private centsToDollars(cents: number): number {
-    return cents / 100;
   }
 
   private applyApiState(api: CompanionStateResponse, atEpoch?: number): void {
@@ -483,9 +480,9 @@ export class CompanionController {
         match === "MISMATCH" ? "(mismatch)" : "",
       );
       const api = await this.backend.companionDomWager(sessionId, {
-        observedBankrollDollars: this.centsToDollars(preWagerBankrollCents),
+        observedBankrollDollars: centsToDollarAmount(preWagerBankrollCents),
         betType: wager.side,
-        stakeDollars: this.centsToDollars(wager.stakeCents),
+        stakeDollars: centsToDollarAmount(wager.stakeCents),
       });
       this.applyApiState(api, atEpoch);
       const expectedWin =
@@ -656,7 +653,7 @@ export class CompanionController {
       const api = await this.backend.companionRegisterWager(sessionId, {
         round_id: roundId,
         bet_type: betType,
-        stake: this.centsToDollars(stakeCents),
+        stake: centsToDollarAmount(stakeCents),
         color_side: observation.colorSide ?? undefined,
       });
       this.registeredWagerRounds.add(roundId);
@@ -715,7 +712,7 @@ export class CompanionController {
     try {
       const api = await this.backend.companionReconcile(
         sessionId,
-        this.centsToDollars(bankrollCents),
+        centsToDollarAmount(bankrollCents),
       );
       this.reconcilingBankroll = bankrollCents;
       this.applyApiState(api, atEpoch);
@@ -952,9 +949,9 @@ export class CompanionController {
 
     try {
       const api = await this.backend.companionStart({
-        bankroll: this.centsToDollars(bankrollCents),
-        target: this.centsToDollars(payload.targetCents),
-        floor: this.centsToDollars(payload.floorCents),
+        bankroll: centsToDollarAmount(bankrollCents),
+        target: centsToDollarAmount(payload.targetCents),
+        floor: centsToDollarAmount(payload.floorCents),
       });
       this.registeredWagerRounds.clear();
       this.registeredResultRounds.clear();
@@ -982,8 +979,8 @@ export class CompanionController {
   } | { ok: false; error: string }> {
     try {
       const result = await this.backend.companionCalculateTarget({
-        bankroll: this.centsToDollars(payload.bankrollCents),
-        floor: this.centsToDollars(payload.floorCents),
+        bankroll: centsToDollarAmount(payload.bankrollCents),
+        floor: centsToDollarAmount(payload.floorCents),
         reachTargetProbability: payload.reachTargetProbability,
       });
       return {
@@ -1023,7 +1020,7 @@ export class CompanionController {
       const api = await this.backend.companionRegisterWager(sessionId, {
         round_id: roundId,
         bet_type: betType,
-        stake: this.centsToDollars(rec.stakeCents),
+        stake: centsToDollarAmount(rec.stakeCents),
         color_side: side,
       });
       this.registeredWagerRounds.add(roundId);
@@ -1107,7 +1104,7 @@ export class CompanionController {
     try {
       const api = await this.backend.companionResync(
         sessionId,
-        this.centsToDollars(bankrollCents),
+        centsToDollarAmount(bankrollCents),
       );
       this.wagerFallbackRoundId = null;
       this.reconcilingBankroll = null;

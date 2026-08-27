@@ -1,10 +1,12 @@
 {
   "name": "roulette-edge-companion",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && vite build --config vite.content.config.ts && vite build --config vite.background.config.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

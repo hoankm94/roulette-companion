@@ -75,6 +75,16 @@ class RecommendationPayload(BaseModel):
     consecutive_loss_durability: int = 0
 
 
+class CompanionRecommendationPayload(BaseModel):
+    status: str
+    action: str | None
+    stake: MoneyAmount | None
+    target_hit_probability: float
+    win_bankroll: MoneyAmount | None
+    lose_bankroll: MoneyAmount | None
+    bankroll: MoneyAmount
+
+
 class OptimizeResponse(BaseModel):
     recommendation: RecommendationPayload
     session: dict[str, Any]
@@ -181,8 +191,17 @@ class CompanionStateResponse(BaseModel):
     target: MoneyAmount
     floor: MoneyAmount
     target_hit_probability: float | None = None
-    consecutive_loss_durability: int | None = None
-    recommendation: RecommendationPayload | None
+    dice_drought_durability: int | None = None
+    dice_drought_survival_threshold: float | None = None
+    dice_drought_survival_at_p90: float | None = None
+    dice_drought_survival_at_p95: float | None = None
+    dice_drought_survival_at_p99: float | None = None
+    dice_drought_durability_capped: bool | None = None
+    historical_dice_drought_median: int | None = None
+    historical_dice_drought_p90: int | None = None
+    historical_dice_drought_p95: int | None = None
+    historical_dice_drought_p99: int | None = None
+    recommendation: CompanionRecommendationPayload | None
     rounds_completed: int
     message: str | None = None
     awaiting_save: bool = False
@@ -285,8 +304,13 @@ class ReplayAnalyzeResponse(BaseModel):
     longest_dice_drought: DroughtPayload
     longest_orange_drought: DroughtPayload
     longest_black_drought: DroughtPayload
-    dice_droughts_ge_35: int
-    dice_droughts_ge_45: int
+    dice_drought_count: int
+    dice_drought_mean: float | None = None
+    dice_drought_median: float | None = None
+    dice_drought_max: int = 0
+    dice_drought_p90: float | None = None
+    dice_drought_p95: float | None = None
+    dice_drought_p99: float | None = None
     window_extremes: list[WindowExtremePayload]
     seed_date: str | None = None
     timezone: str | None = None
@@ -326,6 +350,17 @@ class ReplaySummaryPayload(BaseModel):
     median_rounds_resolved: float
     largest_drawdown: MoneyAmount
     longest_losing_bet_streak: int
+    policy_loss_streak_count: int = 0
+    policy_loss_streak_mean: float | None = None
+    policy_loss_streak_median: float | None = None
+    policy_loss_streak_max: int = 0
+    policy_loss_streak_p90: float | None = None
+    policy_loss_streak_p95: float | None = None
+    policy_loss_streak_p99: float | None = None
+    initial_loss_durability: int = 0
+    durability_breach_count: int = 0
+    durability_breach_rate: float | None = None
+    durability_percentile: float | None = None
     solver: str
     seed_date: str | None = None
     timezone: str | None = None
@@ -350,6 +385,17 @@ class ReplaySessionPayload(BaseModel):
     starting_loss_durability: int = 0
     minimum_loss_durability: int = 0
     ending_loss_durability: int = 0
+    policy_loss_streak_count: int = 0
+    policy_loss_streak_mean: float | None = None
+    policy_loss_streak_median: float | None = None
+    policy_loss_streak_max: int = 0
+    policy_loss_streak_p90: float | None = None
+    policy_loss_streak_p95: float | None = None
+    policy_loss_streak_p99: float | None = None
+    initial_loss_durability: int = 0
+    durability_breach_count: int = 0
+    durability_breach_rate: float | None = None
+    durability_percentile: float | None = None
     trace: list[dict[str, Any]] = Field(default_factory=list)
     estimated_start_time: str | None = None
     estimated_last_time: str | None = None

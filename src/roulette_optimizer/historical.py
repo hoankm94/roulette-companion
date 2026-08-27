@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from roulette_optimizer.run_length_stats import maximal_run_lengths, summarize_run_lengths
 from roulette_optimizer.utils import ConfigError
 
 Outcome = Literal["DICE", "ORANGE", "BLACK"]
@@ -138,8 +139,13 @@ class HistoricalRollAnalysis:
     longest_dice_drought: DroughtInfo
     longest_orange_drought: DroughtInfo
     longest_black_drought: DroughtInfo
-    dice_droughts_ge_35: int
-    dice_droughts_ge_45: int
+    dice_drought_count: int
+    dice_drought_mean: float | None
+    dice_drought_median: float | None
+    dice_drought_max: int
+    dice_drought_p90: float | None
+    dice_drought_p95: float | None
+    dice_drought_p99: float | None
     window_extremes: tuple[WindowExtreme, ...]
     website_extremes: tuple[HistoricalExtreme, ...]
 
@@ -458,28 +464,9 @@ def _longest_drought(rolls: list[HistoricalRoll], missing: Outcome) -> DroughtIn
     return DroughtInfo(missing, best_len, best_start, best_end, d, o, b)
 
 
-def _drought_lengths(rolls: list[HistoricalRoll], missing: Outcome) -> list[int]:
+def drought_lengths(rolls: list[HistoricalRoll], missing: Outcome) -> list[int]:
     """Lengths of all maximal continuous sequences with no `missing` outcome."""
-    lengths: list[int] = []
-    cur_len = 0
-    for r in rolls:
-        if r.outcome != missing:
-            cur_len += 1
-        else:
-            if cur_len > 0:
-                lengths.append(cur_len)
-            cur_len = 0
-    if cur_len > 0:
-        lengths.append(cur_len)
-    return lengths
-
-
-def count_droughts_at_least(
-    rolls: list[HistoricalRoll],
-    missing: Outcome,
-    threshold: int,
-) -> int:
-    return sum(1 for length in _drought_lengths(rolls, missing) if length >= threshold)
+    return maximal_run_lengths(rolls, lambda r: r.outcome != missing)
 
 
 def _window_extremes(
@@ -627,8 +614,7 @@ def analyze_rolls(rolls: list[HistoricalRoll]) -> HistoricalRollAnalysis:
     dice_drought = _longest_drought(rolls, "DICE")
     orange_drought = _longest_drought(rolls, "ORANGE")
     black_drought = _longest_drought(rolls, "BLACK")
-    dice_ge_35 = count_droughts_at_least(rolls, "DICE", 35)
-    dice_ge_45 = count_droughts_at_least(rolls, "DICE", 45)
+    dice_drought_stats = summarize_run_lengths(drought_lengths(rolls, "DICE"))
     windows = _window_extremes(rolls)
     parts = {
         "longest_orange_streak": orange_streak,
@@ -652,10 +638,34 @@ def analyze_rolls(rolls: list[HistoricalRoll]) -> HistoricalRollAnalysis:
         longest_dice_drought=dice_drought,
         longest_orange_drought=orange_drought,
         longest_black_drought=black_drought,
-        dice_droughts_ge_35=dice_ge_35,
-        dice_droughts_ge_45=dice_ge_45,
+        dice_drought_count=dice_drought_stats.count,
+        dice_drought_mean=dice_drought_stats.mean,
+        dice_drought_median=dice_drought_stats.median,
+        dice_drought_max=dice_drought_stats.maximum,
+        dice_drought_p90=dice_drought_stats.p90,
+        dice_drought_p95=dice_drought_stats.p95,
+        dice_drought_p99=dice_drought_stats.p99,
         window_extremes=tuple(windows),
         website_extremes=tuple(website),
+    )
+
+
+def export_companion_dice_drought_reference(
+    analysis: HistoricalAnalysis,
+    path: str | Path,
+    *,
+    period: str = "",
+) -> None:
+    """Write Companion reference profile from historical replay drought stats."""
+    from roulette_optimizer.dice_drought import export_dice_drought_profile
+
+    export_dice_drought_profile(
+        path=path,
+        median=analysis.dice_drought_median,
+        p90=analysis.dice_drought_p90,
+        p95=analysis.dice_drought_p95,
+        p99=analysis.dice_drought_p99,
+        period=period or f"round {analysis.round_start} to {analysis.round_end}",
     )
 
 
@@ -746,6 +756,16 @@ def analysis_as_dicts(
                 with_timing=True,
             )
         )
+    for metric, value in (
+        ("dice_drought_count", analysis.dice_drought_count),
+        ("dice_drought_mean", analysis.dice_drought_mean),
+        ("dice_drought_median", analysis.dice_drought_median),
+        ("dice_drought_max", analysis.dice_drought_max),
+        ("dice_drought_p90", analysis.dice_drought_p90),
+        ("dice_drought_p95", analysis.dice_drought_p95),
+        ("dice_drought_p99", analysis.dice_drought_p99),
+    ):
+        rows.append(row(metric, "" if value is None else value))
     return rows
 
 

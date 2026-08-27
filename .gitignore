@@ -6,6 +6,8 @@ dist/
 *.egg-info/
 outputs/*
 !outputs/.gitkeep
+!outputs/reference/
+!outputs/reference/dice_drought_profile.json
 frontend/node_modules/
 frontend/dist/
 extension/node_modules/

@@ -21,8 +21,10 @@ import {
 import {
   renderOverlayBody,
   renderStopDialog,
+  setupDomMatchesView,
   statusBadgeClass,
   syncSetupControls,
+  syncSetupView,
   type CalculationStatus,
   type OverlayAction,
 } from "../overlay/render.js";
@@ -36,6 +38,7 @@ import {
   captureSetupInputFocus,
   restoreSetupInputFocus,
 } from "./setup-focus.js";
+import { readSetupDraftsFromDom } from "./setup-drafts.js";
 
 function sendMessage<T>(message: CompanionMessage): Promise<T> {
   return chrome.runtime.sendMessage(message) as Promise<T>;
@@ -105,6 +108,13 @@ class CompanionOverlay {
 
     this.body = document.createElement("div");
     this.body.className = "companion-body";
+    this.body.addEventListener("input", (event) => {
+      const el = event.target;
+      if (!(el instanceof HTMLInputElement)) return;
+      if (el.id === "companion-target") this.onSetupDraftInput("target", el.value);
+      else if (el.id === "companion-floor") this.onSetupDraftInput("floor", el.value);
+      else if (el.id === "companion-reach") this.onSetupDraftInput("reach", el.value);
+    });
 
     const footer = document.createElement("footer");
     footer.className = "companion-footer";
@@ -252,20 +262,14 @@ class CompanionOverlay {
   }
 
   private setState(state: CompanionUiState): void {
-    const active = document.activeElement as HTMLInputElement | null;
-    const focusId =
-      active?.id === "companion-target" ||
-      active?.id === "companion-floor" ||
-      active?.id === "companion-reach"
-        ? active.id
-        : null;
-    const selStart = focusId != null ? active!.selectionStart : null;
-    const selEnd = focusId != null ? active!.selectionEnd : null;
-
     const prevView = this.state?.view;
+    const prevHealth = this.state?.health;
     const prevBankroll = this.state?.detectedBankrollCents;
+    const enteringSetup =
+      this.state != null && this.state.view !== "setup" && state.view === "setup";
+    let clearedCalcUi = false;
     // Leaving an active session back to setup clears committed SW money; keep drafts empty.
-    if (this.state && this.state.view !== "setup" && state.view === "setup") {
+    if (enteringSetup) {
       this.resetSetupDrafts();
       if (state.savedJsonPath) {
         this.showSaveBanner(state.savedJsonPath);
@@ -276,20 +280,26 @@ class CompanionOverlay {
       prevBankroll !== state.detectedBankrollCents
     ) {
       this.clearCalculatedTarget();
+      clearedCalcUi = true;
     }
 
     this.state = state;
     this.updateHeader(state);
-    this.renderBody();
 
-    if (focusId && prevView === "setup" && state.view === "setup") {
-      const input = this.body.querySelector(`#${focusId}`) as HTMLInputElement | null;
-      if (input) {
-        input.focus();
-        if (selStart != null && selEnd != null) {
-          input.setSelectionRange(selStart, selEnd);
-        }
-      }
+    const stayingOnSetup = state.view === "setup" && prevView === "setup" && !enteringSetup;
+    const healthLayoutChanged =
+      (prevHealth === "PAGE_UNSUPPORTED") !== (state.health === "PAGE_UNSUPPORTED");
+    const canIncrementalSetup =
+      stayingOnSetup &&
+      !healthLayoutChanged &&
+      setupDomMatchesView(this.body, this.setupMode, state.health);
+
+    if (canIncrementalSetup) {
+      this.syncSetupFromState({ clearCalculationUi: clearedCalcUi });
+    } else if (stayingOnSetup) {
+      this.renderBodyPreservingSetupFocus();
+    } else {
+      this.renderBody();
     }
 
     if (state.view === "stop_dialog") {
@@ -331,6 +341,7 @@ class CompanionOverlay {
   }
 
   private renderBodyPreservingSetupFocus(): void {
+    this.pullSetupDraftsFromDom();
     const captured =
       this.state?.view === "setup" ? captureSetupInputFocus() : { focusId: null, selectionStart: null, selectionEnd: null };
     this.renderBody();
@@ -339,21 +350,59 @@ class CompanionOverlay {
     }
   }
 
+  /** Sync in-memory drafts from live setup inputs before gate/render. */
+  private pullSetupDraftsFromDom(): void {
+    if (this.state?.view !== "setup") return;
+    if (!setupDomMatchesView(this.body, this.setupMode, this.state.health)) return;
+    const dom = readSetupDraftsFromDom(this.body, this.setupMode);
+    if (this.setupMode === "TARGET") {
+      this.targetDraft = dom.target;
+    } else {
+      this.reachDraft = dom.reach;
+    }
+    this.floorDraft = dom.floor;
+  }
+
+  private explainSetupGate() {
+    this.pullSetupDraftsFromDom();
+    if (!this.state) return { canStart: false, reason: null as string | null };
+    return explainSetupStart(
+      this.state.health,
+      this.state.detectedBankrollCents,
+      this.targetDraft,
+      this.floorDraft,
+      {
+        setupMode: this.setupMode,
+        calculatedTargetCents: this.calculatedTargetCents,
+        calculationReady: this.calculationStatus === "READY",
+      },
+    );
+  }
+
+  private onSetupDraftInput(field: "target" | "floor" | "reach", value: string): void {
+    if (this.state?.view !== "setup") return;
+    let clearedCalc = false;
+    if (field === "target") this.targetDraft = value;
+    else if (field === "floor") {
+      this.floorDraft = value;
+      if (this.setupMode === "REACH_TARGET") {
+        this.clearCalculatedTarget();
+        clearedCalc = true;
+      }
+    } else if (field === "reach") {
+      this.reachDraft = value;
+      this.clearCalculatedTarget();
+      clearedCalc = true;
+    }
+    this.fieldErrors = {};
+    this.syncSetupStartGate({ clearCalculationUi: clearedCalc });
+  }
+
   private renderBody(): void {
     if (!this.state) return;
     const gate =
       this.state.view === "setup"
-        ? explainSetupStart(
-            this.state.health,
-            this.state.detectedBankrollCents,
-            this.targetDraft,
-            this.floorDraft,
-            {
-              setupMode: this.setupMode,
-              calculatedTargetCents: this.calculatedTargetCents,
-              calculationReady: this.calculationStatus === "READY",
-            },
-          )
+        ? this.explainSetupGate()
         : { canStart: false, reason: null };
 
     renderOverlayBody(
@@ -378,19 +427,22 @@ class CompanionOverlay {
   }
 
   /** Update Start enablement/reason without rebuilding inputs (preserves caret). */
+  private syncSetupFromState(opts?: { clearCalculationUi?: boolean }): void {
+    if (!this.state || this.state.view !== "setup") return;
+    const gate = this.explainSetupGate();
+    syncSetupView(this.body, {
+      state: this.state,
+      setupMode: this.setupMode,
+      canStart: gate.canStart,
+      startBlockedReason: gate.reason,
+      calculating: this.calculationStatus === "CALCULATING",
+      clearCalculationUi: opts?.clearCalculationUi,
+    });
+  }
+
   private syncSetupStartGate(opts?: { clearCalculationUi?: boolean }): void {
     if (!this.state || this.state.view !== "setup") return;
-    const gate = explainSetupStart(
-      this.state.health,
-      this.state.detectedBankrollCents,
-      this.targetDraft,
-      this.floorDraft,
-      {
-        setupMode: this.setupMode,
-        calculatedTargetCents: this.calculatedTargetCents,
-        calculationReady: this.calculationStatus === "READY",
-      },
-    );
+    const gate = this.explainSetupGate();
     syncSetupControls(this.body, {
       canStart: gate.canStart,
       startBlockedReason: gate.reason,
@@ -454,31 +506,20 @@ class CompanionOverlay {
         this.renderBody();
         return;
 
-      case "draft_change": {
-        let clearedCalc = false;
-        if (action.field === "target") this.targetDraft = action.value;
-        else if (action.field === "floor") {
-          this.floorDraft = action.value;
-          if (this.setupMode === "REACH_TARGET") {
-            this.clearCalculatedTarget();
-            clearedCalc = true;
-          }
-        } else if (action.field === "reach") {
-          this.reachDraft = action.value;
-          this.clearCalculatedTarget();
-          clearedCalc = true;
-        }
-        this.fieldErrors = {};
-        this.syncSetupStartGate({ clearCalculationUi: clearedCalc });
+      case "draft_change":
+        this.onSetupDraftInput(action.field, action.value);
         return;
-      }
 
       case "calculate_target":
         void this.runCalculateTarget();
         return;
 
       case "start": {
+        this.pullSetupDraftsFromDom();
         this.floorDraft = action.floor;
+        if (this.setupMode === "TARGET") {
+          this.targetDraft = action.target;
+        }
         const bankroll = this.state.detectedBankrollCents;
         if (bankroll == null) {
           this.fieldErrors = {
@@ -580,6 +621,7 @@ class CompanionOverlay {
 
   private async runCalculateTarget(): Promise<void> {
     if (!this.state) return;
+    this.pullSetupDraftsFromDom();
     const bankroll = this.state.detectedBankrollCents;
     if (bankroll == null) {
       this.calculationStatus = "ERROR";
@@ -621,6 +663,7 @@ class CompanionOverlay {
     this.calculationStatus = "CALCULATING";
     this.calculationError = null;
     const requestGeneration = this.calculationGeneration;
+    const requestSetupMode = this.setupMode;
     this.renderBodyPreservingSetupFocus();
 
     try {
@@ -644,6 +687,7 @@ class CompanionOverlay {
         requestGeneration,
         this.calculationGeneration,
         result,
+        { requestSetupMode, currentSetupMode: this.setupMode },
       );
       if (!applied.accepted) {
         return;

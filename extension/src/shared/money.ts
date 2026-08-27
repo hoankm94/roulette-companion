@@ -93,6 +93,11 @@ export function centsToPlaceholder(cents: number): string {
   return `${dollars}.${frac.toString().padStart(2, "0")}`;
 }
 
+/** Exact dollar amount for API JSON (avoids float cents/100 drift e.g. 2819 → 28.19). */
+export function centsToDollarAmount(cents: number): number {
+  return Number(centsToPlaceholder(Math.trunc(cents)));
+}
+
 /**
  * Dynamic setup placeholders from trusted bankroll (integer cents).
  * Target = bankroll × 1.07; Hard Floor = bankroll / 3 on bankroll_step grid.

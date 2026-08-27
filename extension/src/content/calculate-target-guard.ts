@@ -1,4 +1,5 @@
 import type { CalculationStatus } from "../overlay/render.js";
+import type { SetupMode } from "../shared/money.js";
 
 export type CalculateTargetMessageResult =
   | { ok: true; targetCents: number; targetHitProbability: number }
@@ -21,7 +22,20 @@ export function applyCalculateTargetResponse(
   requestGeneration: number,
   currentGeneration: number,
   response: CalculateTargetMessageResult,
+  options?: { requestSetupMode?: SetupMode; currentSetupMode?: SetupMode },
 ): CalculateTargetApplyState {
+  if (
+    options?.requestSetupMode === "REACH_TARGET" &&
+    options.currentSetupMode !== "REACH_TARGET"
+  ) {
+    return {
+      accepted: false,
+      calculationStatus: "IDLE",
+      calculatedTargetCents: null,
+      calculatedReachTarget: null,
+      calculationError: null,
+    };
+  }
   if (requestGeneration !== currentGeneration) {
     return {
       accepted: false,

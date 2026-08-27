@@ -1,4 +1,4 @@
-import type { CompanionUiState, RoundOutcome } from "../shared/types";
+import type { CompanionUiState, HealthState, RoundOutcome } from "../shared/types";
 import {
   formatCents,
   setupPlaceholders,
@@ -103,8 +103,26 @@ function appendPauseBanner(container: HTMLElement): void {
 
 function renderUnsupported(container: HTMLElement): void {
   const banner = el("p", "companion-banner companion-banner-info");
+  banner.setAttribute("data-setup-unsupported", "");
   banner.textContent = "Live Companion is available on the Roulette page only.";
   container.appendChild(banner);
+}
+
+/** True when the live setup DOM matches the requested mode/health (inputs present). */
+export function setupDomMatchesView(
+  body: HTMLElement,
+  setupMode: SetupMode,
+  health: HealthState,
+): boolean {
+  if (health === "PAGE_UNSUPPORTED") {
+    return body.querySelector("[data-setup-unsupported]") != null;
+  }
+  if (body.querySelector("[data-setup-unsupported]")) return false;
+  if (!body.querySelector("#companion-floor")) return false;
+  if (setupMode === "TARGET") {
+    return body.querySelector("#companion-target") != null;
+  }
+  return body.querySelector("#companion-reach") != null;
 }
 
 function renderSetup(ctx: OverlayRenderContext, container: HTMLElement): void {
@@ -128,6 +146,7 @@ function renderSetup(ctx: OverlayRenderContext, container: HTMLElement): void {
   }
 
   const conn = el("p", "companion-banner companion-banner-info");
+  conn.setAttribute("data-setup-conn", "");
   conn.textContent =
     state.health === "CONNECTED"
       ? "Connected to local optimizer"
@@ -146,6 +165,7 @@ function renderSetup(ctx: OverlayRenderContext, container: HTMLElement): void {
       ? formatCents(state.detectedBankrollCents)
       : "Unavailable",
   );
+  bankrollValue.setAttribute("data-setup-bankroll", "");
   bankrollField.appendChild(bankrollValue);
   container.appendChild(bankrollField);
 
@@ -178,9 +198,6 @@ function renderSetup(ctx: OverlayRenderContext, container: HTMLElement): void {
     targetInput.placeholder = placeholders?.targetPlaceholder ?? "e.g. 40.00";
     targetInput.value = targetDraft;
     targetLabel.htmlFor = targetInput.id;
-    targetInput.addEventListener("input", () =>
-      onAction({ type: "draft_change", field: "target", value: targetInput.value }),
-    );
     targetField.append(targetLabel, targetInput);
     if (fieldErrors?.target) {
       targetField.appendChild(el("span", "companion-field-error", fieldErrors.target));
@@ -198,9 +215,6 @@ function renderSetup(ctx: OverlayRenderContext, container: HTMLElement): void {
     reachInput.placeholder = "e.g. 89.23";
     reachInput.value = reachDraft;
     reachLabel.htmlFor = reachInput.id;
-    reachInput.addEventListener("input", () =>
-      onAction({ type: "draft_change", field: "reach", value: reachInput.value }),
-    );
     reachField.append(reachLabel, reachInput);
     if (fieldErrors?.reach) {
       reachField.appendChild(el("span", "companion-field-error", fieldErrors.reach));
@@ -219,9 +233,6 @@ function renderSetup(ctx: OverlayRenderContext, container: HTMLElement): void {
   floorInput.placeholder = placeholders?.floorPlaceholder ?? "e.g. 10.00";
   floorInput.value = floorDraft;
   floorLabel.htmlFor = floorInput.id;
-  floorInput.addEventListener("input", () =>
-    onAction({ type: "draft_change", field: "floor", value: floorInput.value }),
-  );
   floorField.append(floorLabel, floorInput);
   if (fieldErrors?.floor) {
     floorField.appendChild(el("span", "companion-field-error", fieldErrors.floor));
@@ -280,15 +291,17 @@ function renderSetup(ctx: OverlayRenderContext, container: HTMLElement): void {
   const startBtn = btn(
     "Start Live Companion",
     "companion-btn companion-btn-primary companion-btn-lg",
-    () =>
+    () => {
+      const targetEl = container.querySelector<HTMLInputElement>("#companion-target");
       onAction({
         type: "start",
         target:
           setupMode === "REACH_TARGET" && ctx.calculatedTargetCents != null
             ? centsToDollarInput(ctx.calculatedTargetCents)
-            : targetDraft,
+            : (targetEl?.value ?? targetDraft),
         floor: floorInput.value,
-      }),
+      });
+    },
     !canStart || calcStatus === "CALCULATING",
   );
   startBtn.setAttribute("data-start-btn", "");
@@ -313,6 +326,53 @@ function centsToDollarInput(cents: number): string {
   const dollars = Math.floor(abs / 100);
   const frac = abs % 100;
   return `${dollars}.${frac.toString().padStart(2, "0")}`;
+}
+
+/** Update setup chrome without rebuilding inputs (preserves drafts/focus). */
+export function syncSetupView(
+  body: HTMLElement,
+  ctx: {
+    state: CompanionUiState;
+    setupMode: SetupMode;
+    canStart: boolean;
+    startBlockedReason: string | null;
+    calculating?: boolean;
+    clearCalculationUi?: boolean;
+  },
+): void {
+  const conn = body.querySelector<HTMLElement>("[data-setup-conn]");
+  if (conn) {
+    conn.textContent =
+      ctx.state.health === "CONNECTED"
+        ? "Connected to local optimizer"
+        : ctx.state.health === "BACKEND_OFFLINE"
+          ? "Optimizer offline — local backend is not connected"
+          : "Website bankroll unavailable";
+  }
+
+  const bankrollEl = body.querySelector<HTMLElement>("[data-setup-bankroll]");
+  if (bankrollEl) {
+    bankrollEl.textContent =
+      ctx.state.detectedBankrollCents != null
+        ? formatCents(ctx.state.detectedBankrollCents)
+        : "Unavailable";
+  }
+
+  if (ctx.state.detectedBankrollCents != null) {
+    const placeholders = setupPlaceholders(ctx.state.detectedBankrollCents);
+    const targetInput = body.querySelector<HTMLInputElement>("#companion-target");
+    const floorInput = body.querySelector<HTMLInputElement>("#companion-floor");
+    if (targetInput) targetInput.placeholder = placeholders.targetPlaceholder;
+    if (floorInput) floorInput.placeholder = placeholders.floorPlaceholder;
+  }
+
+  syncSetupControls(body, {
+    canStart: ctx.canStart,
+    startBlockedReason: ctx.startBlockedReason,
+    calculating: ctx.calculating,
+    clearCalculationUi: ctx.clearCalculationUi,
+    bankrollAvailable: ctx.state.detectedBankrollCents != null,
+  });
 }
 
 function renderPreparing(container: HTMLElement): void {
@@ -343,11 +403,8 @@ function renderRecommendation(ctx: OverlayRenderContext, container: HTMLElement)
     "Reach target",
     formatProbability(state.targetHitProbability ?? rec.targetHitProbability),
   );
-  const durability = metric(
-    "Consecutive loss durability",
-    formatDurability(state.consecutiveLossDurability ?? rec.consecutiveLossDurability),
-  );
-  liveMetrics.append(reach, durability);
+  liveMetrics.append(reach);
+  liveMetrics.appendChild(renderDiceDroughtMetrics(state));
   reco.appendChild(liveMetrics);
 
   const metrics = el("div", "companion-metrics");
@@ -366,9 +423,84 @@ function formatProbability(p: number | null | undefined): string {
   return `${(p * 100).toFixed(2)}%`;
 }
 
-function formatDurability(n: number | null | undefined): string {
+function formatDurability(n: number | null | undefined, capped = false): string {
   if (n == null || Number.isNaN(n)) return "—";
-  return String(n);
+  const suffix = capped ? "+" : "";
+  return `${n}${suffix} round${n === 1 && !suffix ? "" : "s"}`;
+}
+
+function renderDiceDroughtMetrics(state: CompanionUiState): HTMLElement {
+  const d = state.diceDrought;
+  const block = el("div", "companion-drought-metrics");
+
+  const durabilityValue = formatDurability(
+    d.diceDroughtDurability,
+    d.diceDroughtDurabilityCapped,
+  );
+  block.appendChild(metric("DICE drought durability", durabilityValue));
+
+  const hist = d.historicalDiceDroughtMedian;
+  if (
+    hist != null &&
+    d.historicalDiceDroughtP90 != null &&
+    d.historicalDiceDroughtP95 != null &&
+    d.historicalDiceDroughtP99 != null
+  ) {
+    const histLine = el(
+      "p",
+      "companion-drought-historical",
+      `Median ${hist} · P90 ${d.historicalDiceDroughtP90} · P95 ${d.historicalDiceDroughtP95} · P99 ${d.historicalDiceDroughtP99}`,
+    );
+    block.appendChild(histLine);
+  }
+
+  if (d.diceDroughtSurvivalAtP95 != null) {
+    block.appendChild(
+      metric("Survival at P95", formatProbability(d.diceDroughtSurvivalAtP95)),
+    );
+  }
+  if (d.diceDroughtSurvivalAtP99 != null) {
+    block.appendChild(
+      metric("Survival at P99", formatProbability(d.diceDroughtSurvivalAtP99)),
+    );
+  }
+
+  const details = el("details", "companion-drought-help");
+  const summary = el("summary", undefined, "About DICE drought risk");
+  details.appendChild(summary);
+  const help = el("div", "companion-drought-help-body");
+  help.appendChild(
+    el(
+      "p",
+      undefined,
+      "How many consecutive no-DICE rounds the current frozen policy can survive with at least 95% probability.",
+    ),
+  );
+  help.appendChild(
+    el(
+      "p",
+      undefined,
+      "Historical P95/P99: length at or below that percentile in observed historical droughts.",
+    ),
+  );
+  help.appendChild(
+    el(
+      "p",
+      undefined,
+      "Survival at P95/P99: chance the policy stays above the hard floor through a drought of that length.",
+    ),
+  );
+  help.appendChild(
+    el(
+      "p",
+      undefined,
+      "A long current drought does not make DICE more likely on the next round.",
+    ),
+  );
+  details.appendChild(help);
+  block.appendChild(details);
+
+  return block;
 }
 
 function metric(label: string, value: string, valueClass?: string): HTMLElement {

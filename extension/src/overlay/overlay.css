@@ -275,6 +275,28 @@
   font-weight: 600;
 }
 
+.companion-drought-metrics {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.companion-drought-historical {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.companion-drought-help {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.companion-drought-help-body p {
+  margin: 0.25rem 0 0;
+}
+
 .companion-metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));

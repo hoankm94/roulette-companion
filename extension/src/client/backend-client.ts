@@ -22,13 +22,26 @@ export interface RecommendationPayload {
   consecutive_loss_durability?: number;
 }
 
+export interface CompanionDiceDroughtFields {
+  dice_drought_durability?: number | null;
+  dice_drought_survival_threshold?: number | null;
+  dice_drought_survival_at_p90?: number | null;
+  dice_drought_survival_at_p95?: number | null;
+  dice_drought_survival_at_p99?: number | null;
+  dice_drought_durability_capped?: boolean | null;
+  historical_dice_drought_median?: number | null;
+  historical_dice_drought_p90?: number | null;
+  historical_dice_drought_p95?: number | null;
+  historical_dice_drought_p99?: number | null;
+}
+
 export interface CompanionWagerPayload {
   bet_type: string;
   stake: MoneyAmount;
   color_side?: "ORANGE" | "BLACK" | null;
 }
 
-export interface CompanionStateResponse {
+export interface CompanionStateResponse extends CompanionDiceDroughtFields {
   session_id: string;
   session_status: string;
   status: string;
@@ -36,7 +49,6 @@ export interface CompanionStateResponse {
   target: MoneyAmount;
   floor: MoneyAmount;
   target_hit_probability?: number | null;
-  consecutive_loss_durability?: number | null;
   recommendation: RecommendationPayload | null;
   rounds_completed: number;
   message?: string | null;

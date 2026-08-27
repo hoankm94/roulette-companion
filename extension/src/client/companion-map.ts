@@ -1,13 +1,30 @@
 import type {
   BetType,
   CompanionUiState,
+  DiceDroughtMetrics,
   Recommendation,
   RoundOutcome,
   SessionView,
   TerminalReason,
   WagerObservation,
 } from "../shared/types.js";
+import { emptyDiceDroughtMetrics } from "../shared/types.js";
 import type { CompanionStateResponse } from "./backend-client.js";
+
+function mapDiceDrought(api: CompanionStateResponse): DiceDroughtMetrics {
+  return {
+    diceDroughtDurability: api.dice_drought_durability ?? null,
+    diceDroughtSurvivalThreshold: api.dice_drought_survival_threshold ?? null,
+    diceDroughtSurvivalAtP90: api.dice_drought_survival_at_p90 ?? null,
+    diceDroughtSurvivalAtP95: api.dice_drought_survival_at_p95 ?? null,
+    diceDroughtSurvivalAtP99: api.dice_drought_survival_at_p99 ?? null,
+    diceDroughtDurabilityCapped: api.dice_drought_durability_capped === true,
+    historicalDiceDroughtMedian: api.historical_dice_drought_median ?? null,
+    historicalDiceDroughtP90: api.historical_dice_drought_p90 ?? null,
+    historicalDiceDroughtP95: api.historical_dice_drought_p95 ?? null,
+    historicalDiceDroughtP99: api.historical_dice_drought_p99 ?? null,
+  };
+}
 
 function mapRecommendation(api: CompanionStateResponse): Recommendation | null {
   const rec = api.recommendation;
@@ -18,8 +35,6 @@ function mapRecommendation(api: CompanionStateResponse): Recommendation | null {
       winBankrollCents: rec.win_bankroll?.cents ?? 0,
       loseBankrollCents: rec.lose_bankroll?.cents ?? 0,
       targetHitProbability: rec.target_hit_probability ?? api.target_hit_probability ?? null,
-      consecutiveLossDurability:
-        rec.consecutive_loss_durability ?? api.consecutive_loss_durability ?? null,
     };
   }
   if (api.recommended_wager) {
@@ -29,7 +44,6 @@ function mapRecommendation(api: CompanionStateResponse): Recommendation | null {
       winBankrollCents: 0,
       loseBankrollCents: 0,
       targetHitProbability: api.target_hit_probability ?? null,
-      consecutiveLossDurability: api.consecutive_loss_durability ?? null,
     };
   }
   return null;
@@ -88,10 +102,7 @@ export function applyCompanionApiResponse(
   next.mockMode = false;
   next.targetHitProbability =
     api.target_hit_probability ?? api.recommendation?.target_hit_probability ?? null;
-  next.consecutiveLossDurability =
-    api.consecutive_loss_durability ??
-    api.recommendation?.consecutive_loss_durability ??
-    null;
+  next.diceDrought = mapDiceDrought(api);
 
   const mappedRec = mapRecommendation(api);
   if (mappedRec) {
@@ -191,3 +202,5 @@ export function applyCompanionApiResponse(
   next.canStart = false;
   return next;
 }
+
+export { emptyDiceDroughtMetrics, mapDiceDrought };

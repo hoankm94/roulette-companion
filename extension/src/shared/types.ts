@@ -46,7 +46,19 @@ export interface Recommendation {
   winBankrollCents: number;
   loseBankrollCents: number;
   targetHitProbability?: number | null;
-  consecutiveLossDurability?: number | null;
+}
+
+export interface DiceDroughtMetrics {
+  diceDroughtDurability: number | null;
+  diceDroughtSurvivalThreshold: number | null;
+  diceDroughtSurvivalAtP90: number | null;
+  diceDroughtSurvivalAtP95: number | null;
+  diceDroughtSurvivalAtP99: number | null;
+  diceDroughtDurabilityCapped: boolean;
+  historicalDiceDroughtMedian: number | null;
+  historicalDiceDroughtP90: number | null;
+  historicalDiceDroughtP95: number | null;
+  historicalDiceDroughtP99: number | null;
 }
 
 export type SessionView =
@@ -83,7 +95,7 @@ export interface CompanionUiState {
   recommendation: Recommendation | null;
   /** Same Live Play fields — updated on start and every logical settlement. */
   targetHitProbability: number | null;
-  consecutiveLossDurability: number | null;
+  diceDrought: DiceDroughtMetrics;
   observedWager: WagerObservation | null;
   expectedBankrollCents: number | null;
   websiteBankrollCents: number | null;
@@ -101,6 +113,21 @@ export interface CompanionUiState {
 
 export const DEFAULT_BACKEND_URL = "http://localhost:8000";
 
+export function emptyDiceDroughtMetrics(): DiceDroughtMetrics {
+  return {
+    diceDroughtDurability: null,
+    diceDroughtSurvivalThreshold: null,
+    diceDroughtSurvivalAtP90: null,
+    diceDroughtSurvivalAtP95: null,
+    diceDroughtSurvivalAtP99: null,
+    diceDroughtDurabilityCapped: false,
+    historicalDiceDroughtMedian: null,
+    historicalDiceDroughtP90: null,
+    historicalDiceDroughtP95: null,
+    historicalDiceDroughtP99: null,
+  };
+}
+
 export function emptyUiState(): CompanionUiState {
   return {
     view: "setup",
@@ -113,7 +140,7 @@ export function emptyUiState(): CompanionUiState {
     currentBankrollCents: null,
     recommendation: null,
     targetHitProbability: null,
-    consecutiveLossDurability: null,
+    diceDrought: emptyDiceDroughtMetrics(),
     observedWager: null,
     expectedBankrollCents: null,
     websiteBankrollCents: null,

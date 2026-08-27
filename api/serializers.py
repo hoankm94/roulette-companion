@@ -31,6 +31,7 @@ from roulette_optimizer.state_space import build_state_space
 
 from api.money import cents_to_dollars
 from api.models import (
+    CompanionRecommendationPayload,
     CompanionStateResponse,
     CompanionWagerPayload,
     DiceMapRowPayload,
@@ -100,20 +101,29 @@ def solver_meta(result: SolverResult, solver: str) -> SolverMeta:
     )
 
 
-def recommendation_payload(rec: Recommendation) -> RecommendationPayload:
+def recommendation_payload(
+    rec: Recommendation,
+    *,
+    include_loss_durability: bool = True,
+) -> RecommendationPayload | CompanionRecommendationPayload:
     action = None
     if rec.status == "ACTION" and rec.bet_type is not None:
         action = rec.bet_type
-    return RecommendationPayload(
-        status=rec.status,
-        action=action,
-        stake=money(rec.stake),
-        target_hit_probability=rec.target_hit_probability,
-        win_bankroll=money(rec.win_bankroll),
-        lose_bankroll=money(rec.lose_bankroll),
-        bankroll=money_req(rec.bankroll),
-        consecutive_loss_durability=rec.consecutive_loss_durability,
-    )
+    common = {
+        "status": rec.status,
+        "action": action,
+        "stake": money(rec.stake),
+        "target_hit_probability": rec.target_hit_probability,
+        "win_bankroll": money(rec.win_bankroll),
+        "lose_bankroll": money(rec.lose_bankroll),
+        "bankroll": money_req(rec.bankroll),
+    }
+    if include_loss_durability:
+        return RecommendationPayload(
+            **common,
+            consecutive_loss_durability=rec.consecutive_loss_durability,
+        )
+    return CompanionRecommendationPayload(**common)
 
 
 def policy_rows(result: SolverResult, session: SessionConfig) -> list[PolicyRow]:
@@ -300,18 +310,11 @@ def companion_state(
     outcome: PlayOutcome,
     session: LiveSession,
 ) -> CompanionStateResponse:
+    from roulette_optimizer.dice_drought import companion_dice_drought_payload
+
     loaded = session.loaded
     rec = outcome.recommendation
-    durability = None
-    if rec is not None:
-        durability = rec.consecutive_loss_durability
-    else:
-        from roulette_optimizer.policy import consecutive_loss_durability
-
-        try:
-            durability = consecutive_loss_durability(loaded, outcome.bankroll)
-        except Exception:
-            durability = None
+    drought = companion_dice_drought_payload(loaded, outcome.bankroll)
     ctx = _companion_context(session)
     return CompanionStateResponse(
         session_id=session_id,
@@ -321,8 +324,19 @@ def companion_state(
         target=money_req(loaded.session.target_bankroll),
         floor=money_req(loaded.session.floor_bankroll),
         target_hit_probability=None if rec is None else rec.target_hit_probability,
-        consecutive_loss_durability=durability,
-        recommendation=None if rec is None else recommendation_payload(rec),
+        dice_drought_durability=drought["dice_drought_durability"],
+        dice_drought_survival_threshold=drought["dice_drought_survival_threshold"],
+        dice_drought_survival_at_p90=drought["dice_drought_survival_at_p90"],
+        dice_drought_survival_at_p95=drought["dice_drought_survival_at_p95"],
+        dice_drought_survival_at_p99=drought["dice_drought_survival_at_p99"],
+        dice_drought_durability_capped=drought.get("dice_drought_durability_capped"),
+        historical_dice_drought_median=drought["historical_dice_drought_median"],
+        historical_dice_drought_p90=drought["historical_dice_drought_p90"],
+        historical_dice_drought_p95=drought["historical_dice_drought_p95"],
+        historical_dice_drought_p99=drought["historical_dice_drought_p99"],
+        recommendation=None
+        if rec is None
+        else recommendation_payload(rec, include_loss_durability=False),
         rounds_completed=outcome.rounds_completed,
         message=outcome.message,
         awaiting_save=False,
@@ -440,8 +454,13 @@ def analyze_response(
         longest_dice_drought=_drought(analysis.longest_dice_drought, timing),
         longest_orange_drought=_drought(analysis.longest_orange_drought, timing),
         longest_black_drought=_drought(analysis.longest_black_drought, timing),
-        dice_droughts_ge_35=analysis.dice_droughts_ge_35,
-        dice_droughts_ge_45=analysis.dice_droughts_ge_45,
+        dice_drought_count=analysis.dice_drought_count,
+        dice_drought_mean=analysis.dice_drought_mean,
+        dice_drought_median=analysis.dice_drought_median,
+        dice_drought_max=analysis.dice_drought_max,
+        dice_drought_p90=analysis.dice_drought_p90,
+        dice_drought_p95=analysis.dice_drought_p95,
+        dice_drought_p99=analysis.dice_drought_p99,
         window_extremes=[_window(w, timing) for w in analysis.window_extremes],
         seed_date=timing.seed_date.isoformat() if timing is not None else None,
         timezone=timing.timezone_name if timing is not None else None,
@@ -450,6 +469,12 @@ def analyze_response(
         ),
         timing_status=TIMING_STATUS_ESTIMATED if timing is not None else None,
     )
+
+
+def _optional_float(raw: object) -> float | None:
+    if raw in (None, ""):
+        return None
+    return float(raw)  # type: ignore[arg-type]
 
 
 def _moneyize_session_dict(raw: dict[str, object]) -> ReplaySessionPayload:
@@ -475,6 +500,17 @@ def _moneyize_session_dict(raw: dict[str, object]) -> ReplaySessionPayload:
         starting_loss_durability=int(raw.get("starting_loss_durability", 0)),
         minimum_loss_durability=int(raw.get("minimum_loss_durability", 0)),
         ending_loss_durability=int(raw.get("ending_loss_durability", 0)),
+        policy_loss_streak_count=int(raw.get("policy_loss_streak_count", 0)),
+        policy_loss_streak_mean=_optional_float(raw.get("policy_loss_streak_mean")),
+        policy_loss_streak_median=_optional_float(raw.get("policy_loss_streak_median")),
+        policy_loss_streak_max=int(raw.get("policy_loss_streak_max", 0)),
+        policy_loss_streak_p90=_optional_float(raw.get("policy_loss_streak_p90")),
+        policy_loss_streak_p95=_optional_float(raw.get("policy_loss_streak_p95")),
+        policy_loss_streak_p99=_optional_float(raw.get("policy_loss_streak_p99")),
+        initial_loss_durability=int(raw.get("initial_loss_durability", 0)),
+        durability_breach_count=int(raw.get("durability_breach_count", 0)),
+        durability_breach_rate=_optional_float(raw.get("durability_breach_rate")),
+        durability_percentile=_optional_float(raw.get("durability_percentile")),
         trace=[],
         estimated_start_time=str(est_start) if est_start else None,
         estimated_last_time=str(est_last) if est_last else None,
@@ -527,6 +563,17 @@ def replay_summary_payload(s: ReplaySummary) -> ReplaySummaryPayload:
         median_rounds_resolved=float(raw["median_rounds_resolved"]),
         largest_drawdown=money_req(int(raw["largest_drawdown"])),
         longest_losing_bet_streak=int(raw["longest_losing_bet_streak"]),
+        policy_loss_streak_count=int(raw.get("policy_loss_streak_count", 0)),
+        policy_loss_streak_mean=_optional_float(raw.get("policy_loss_streak_mean")),
+        policy_loss_streak_median=_optional_float(raw.get("policy_loss_streak_median")),
+        policy_loss_streak_max=int(raw.get("policy_loss_streak_max", 0)),
+        policy_loss_streak_p90=_optional_float(raw.get("policy_loss_streak_p90")),
+        policy_loss_streak_p95=_optional_float(raw.get("policy_loss_streak_p95")),
+        policy_loss_streak_p99=_optional_float(raw.get("policy_loss_streak_p99")),
+        initial_loss_durability=int(raw.get("initial_loss_durability", 0)),
+        durability_breach_count=int(raw.get("durability_breach_count", 0)),
+        durability_breach_rate=_optional_float(raw.get("durability_breach_rate")),
+        durability_percentile=_optional_float(raw.get("durability_percentile")),
         solver=str(raw["solver"]),
         seed_date=str(seed) if seed else None,
         timezone=str(tz) if tz else None,

@@ -33,7 +33,7 @@ This writes the loadable extension to `extension/dist`.
 1. Open `edge://extensions`
 2. Turn on **Developer mode**
 3. **Load unpacked** → choose the `extension/dist` folder
-4. Confirm version **0.1.4**
+4. Confirm version **0.2.0**
 5. Allow site access for `csgoempire.com` and `localhost:8000` if Edge asks
 
 ### 4. Play
@@ -64,6 +64,8 @@ Round flow:
 3. Extension detects the placed wager and the result
 4. Overlay updates bankroll metrics and the next recommendation
 
+**Overlay metrics:** Reach target % and **DICE drought durability** — how many consecutive no-DICE rounds the frozen policy can survive with at least 95% probability, plus historical drought context (Median / P90 / P95 / P99) and survival at P95/P99.
+
 Saved sessions (if you choose Save) land in `outputs/saved_sessions/` on your machine via the API container mount.
 
 ---
@@ -73,6 +75,7 @@ Saved sessions (if you choose Save) land in `outputs/saved_sessions/` on your ma
 - Recommendations only — no auto-betting
 - While a session is active, do not deposit, withdraw, open cases, or place unrelated wagers (external balance changes break tracking)
 - Ambiguous bankroll or incomplete result markers fail closed (no guessing)
+- A long current DICE drought does not make DICE more likely on the next round
 
 ---
 
@@ -92,7 +95,7 @@ No host Python, Node, or npm install is required.
 
 | Issue | Fix |
 |-------|-----|
-| Overlay missing | Confirm you are on `/roulette`, extension is enabled, version 0.1.4 |
+| Overlay missing | Confirm you are on `/roulette`, extension is enabled, version 0.2.0 |
 | Not connected | API must be up (`docker compose up --build api`); allow `localhost:8000` |
 | Stale UI after rebuild | Edge → Extensions → **Reload** Companion |
 | Port 8000 in use | Stop whatever is using 8000, or change the compose port mapping |
