@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Roulette Optimizer Live Companion",
+  "version": "0.1.4",
+  "description": "Follow a verified roulette policy on CSGOEmpire. Reads website state and connects to the local optimizer — never places wagers.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://csgoempire.com/*",
+    "https://*.csgoempire.com/*",
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://csgoempire.com/*",
+        "https://*.csgoempire.com/*"
+      ],
+      "js": ["content/content-script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

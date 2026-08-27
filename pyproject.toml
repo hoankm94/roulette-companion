@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "roulette-optimizer"
+version = "0.1.0"
+description = "Dynamic Goal-Directed roulette optimizer"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "numpy>=2.0",
+  "scipy>=1.14",
+  "numba>=0.60",
+  "typer>=0.12",
+  "rich>=13.0",
+]
+
+[project.scripts]
+roulette-opt = "roulette_optimizer.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]

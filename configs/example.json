@@ -1,0 +1,13 @@
+{
+  "starting_bankroll": 1000,
+  "target_bankroll": 1200,
+  "floor_bankroll": 700,
+  "bankroll_step": 1,
+  "minimum_bet": 1,
+  "maximum_color_bet": 250000,
+  "maximum_dice_bet": 50000,
+  "allow_color": true,
+  "allow_dice": true,
+  "solver_tolerance": 1e-12,
+  "solver_max_iterations": 100000
+}
